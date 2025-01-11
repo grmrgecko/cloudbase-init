@@ -988,6 +988,8 @@ class WindowsUtils(base.BaseOSUtils):
             adapter.Disable()
 
     @staticmethod
+    @retry_decorator.retry_decorator(
+        max_retry_count=5, exceptions=wmi.x_wmi)
     def _set_static_network_config(name, address, prefix_len, gateway):
         if netaddr.valid_ipv6(address):
             family = AF_INET6
