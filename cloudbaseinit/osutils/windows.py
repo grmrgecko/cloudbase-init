@@ -987,6 +987,28 @@ class WindowsUtils(base.BaseOSUtils):
         else:
             adapter.Disable()
 
+    def enable_disabled_network_adapters(self):
+        """Find disabled interfaces, and enable them.
+
+        If the interfaces are disabled, WMI won't know their MAC address,
+        which in term prevents get_network_adapters from finding the adapter.
+        This function exists to allow network plugins to enable the adapters,
+        which then allows the plugin to find the MAC address and utilize the
+        adapter as needed.
+        """
+
+        # Load the cimv2 interface.
+        conn = wmi.WMI(moniker='//./root/cimv2')
+        # Get disabled adapters.
+        wql = 'SELECT * FROM Win32_NetworkAdapter WHERE NetEnabled = False'
+        if self.check_os_version(6, 0):
+            wql += ' AND PhysicalAdapter = True'
+        q = conn.query(wql)
+
+        # Loop results, and enable.
+        for r in q:
+            r.Enable()
+
     @staticmethod
     @retry_decorator.retry_decorator(
         max_retry_count=5, exceptions=wmi.x_wmi)

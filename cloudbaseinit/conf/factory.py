@@ -27,6 +27,7 @@ _OPT_PATHS = (
     'cloudbaseinit.conf.vmwareguestinfo.VMwareGuestInfoConfigOptions',
     'cloudbaseinit.conf.gce.GCEOptions',
     'cloudbaseinit.conf.nocloud.NoCloudOptions',
+    'cloudbaseinit.conf.localnetworkconfig.LocalNetworkConfigOptions',
 )
 
 

@@ -108,7 +108,7 @@ class FakeException(Exception):
 class VMwareGuestInfoServiceTest(unittest.TestCase):
 
     @mock.patch('cloudbaseinit.osutils.factory.get_os_utils')
-    def setUp(self, mock_os_utils):
+    def setUp(self, mock_get_os_utils):
         self._module = importlib.import_module(BASE_MODULE_PATH)
         self._service = (self._module.VMwareGuestInfoService())
         self.snatcher = testutils.LogSnatcher(BASE_MODULE_PATH)
@@ -269,18 +269,35 @@ class VMwareGuestInfoServiceTest(unittest.TestCase):
               (serialization.parse_json_yaml(NETWORK_CONFIG_TEST_DATA_V2),
                EXPECTED_NETWORK_DETAILS_V2))
     @ddt.unpack
-    def test_get_network_details(self, network_data, expected_return_value):
+    @mock.patch('cloudbaseinit.osutils.factory.get_os_utils')
+    def test_get_network_details(self, network_data,
+                                 expected_return_value,
+                                 mock_get_os_utils):
         self._service._meta_data = network_data
+
+        mock_osutils = mock.MagicMock()
+        mock_get_os_utils.return_value = mock_osutils
+        mock_osutils.enable_disabled_network_adapters.return_value = None
+        mock_osutils.get_network_adapters.return_value = [
+            (EXPECTED_NETWORK_LINK.id, EXPECTED_NETWORK_LINK.mac_address)]
 
         network_v2 = self._service.get_network_details_v2()
         self.assertEqual(network_v2, expected_return_value)
 
     @mock.patch(MODULE_PATH + "._get_guest_data")
     @mock.patch('os.path.exists')
-    def test_get_network_details_v2_b64(self, mock_os_path_exists,
+    @mock.patch('cloudbaseinit.osutils.factory.get_os_utils')
+    def test_get_network_details_v2_b64(self, mock_get_os_utils,
+                                        mock_os_path_exists,
                                         mock_get_guest_data):
         mock_os_path_exists.return_value = True
         mock_get_guest_data.return_value = NETWORK_CONFIG_TEST_DATA_V2_GZIPB64
+
+        mock_osutils = mock.MagicMock()
+        mock_get_os_utils.return_value = mock_osutils
+        mock_osutils.enable_disabled_network_adapters.return_value = None
+        mock_osutils.get_network_adapters.return_value = [
+            (EXPECTED_NETWORK_LINK.id, EXPECTED_NETWORK_LINK.mac_address)]
 
         self._service.load()
         network_v2 = self._service.get_network_details_v2()
