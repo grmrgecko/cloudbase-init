@@ -1,0 +1,7 @@
+time: 2025-01-14 18:27:15.193178Z
+tags: worker-0
+test: cloudbaseinit.tests.metadata.services.test_maasservice.MaaSHttpServiceTest.test_get_network_details_v2_unsupported_config_type
+time: 2025-01-14 18:27:15.194192Z
+successful: cloudbaseinit.tests.metadata.services.test_maasservice.MaaSHttpServiceTest.test_get_network_details_v2_unsupported_config_type [ multipart
+]
+tags: -worker-0

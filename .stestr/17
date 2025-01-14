@@ -1,0 +1,16 @@
+time: 2025-01-14 18:25:43.318597Z
+tags: worker-0
+test: cloudbaseinit.tests.metadata.services.test_maasservice.MaaSHttpServiceTest.test_get_network_details_v2_unsupported_config_type
+time: 2025-01-14 18:25:43.319298Z
+failure: cloudbaseinit.tests.metadata.services.test_maasservice.MaaSHttpServiceTest.test_get_network_details_v2_unsupported_config_type [ multipart
+Content-Type: text/x-traceback;charset=utf8,language=python
+traceback
+17A
+Traceback (most recent call last):
+  File "/home/grmrgecko/Development/cloudbase-init/cloudbaseinit/tests/metadata/services/test_maasservice.py", line 400, in test_get_network_details_v2_unsupported_config_type
+    self.assertEqual(True, expected_result in snatcher.output[0])
+                                              ~~~~~~~~~~~~~~~^^^
+IndexError: list index out of range
+0
+]
+tags: -worker-0

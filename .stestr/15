@@ -1,0 +1,46 @@
+time: 2025-01-14 18:19:33.907570Z
+tags: worker-0
+test: cloudbaseinit.tests.metadata.services.test_maasservice.MaaSHttpServiceTest.test_get_network_details_v2_unsupported_config_type
+time: 2025-01-14 18:19:33.908513Z
+failure: cloudbaseinit.tests.metadata.services.test_maasservice.MaaSHttpServiceTest.test_get_network_details_v2_unsupported_config_type [ multipart
+Content-Type: text/x-traceback;charset=utf8,language=python
+traceback
+775
+Traceback (most recent call last):
+  File "/home/grmrgecko/Development/cloudbase-init/cloudbaseinit/tests/metadata/services/test_maasservice.py", line 399, in test_get_network_details_v2_unsupported_config_type
+    self._test_get_network_details_v2(unsupported_config_type=True)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/unittest/mock.py", line 1424, in patched
+    return func(*newargs, **newkeywargs)
+  File "/home/grmrgecko/Development/cloudbase-init/cloudbaseinit/tests/metadata/services/test_maasservice.py", line 383, in _test_get_network_details_v2
+    self.assertEqual(
+    ~~~~~~~~~~~~~~~~^
+        [network_model.NameServerService(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+            search=[mock.sentinel.dns_search1])],
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        network_details.services)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/unittest/case.py", line 907, in assertEqual
+    assertion_func(first, second, msg=msg)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/unittest/case.py", line 1113, in assertListEqual
+    self.assertSequenceEqual(list1, list2, msg, seq_type=list)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/unittest/case.py", line 1095, in assertSequenceEqual
+    self.fail(msg)
+    ~~~~~~~~~^^^^^
+  File "/usr/lib/python3.13/unittest/case.py", line 732, in fail
+    raise self.failureException(msg)
+AssertionError: Lists differ: [NameServerService(addresses=[sentinel.bon[69 chars]h1])] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+NameServerService(addresses=[sentinel.bond_subnet_dns1, sentinel.bond_subnet_dns2], search=[sentinel.dns_search1])
+
+- [NameServerService(addresses=[sentinel.bond_subnet_dns1, sentinel.bond_subnet_dns2], search=[sentinel.dns_search1])]
++ []
+0
+]
+tags: -worker-0
