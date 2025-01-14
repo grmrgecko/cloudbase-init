@@ -38,3 +38,4 @@ nova/tests/cover/*
 nova/vcsversion.py
 tools/conf/nova.conf*
 .vscode/
+.stestr/*

@@ -103,6 +103,9 @@ class BaseOSUtils(object):
     def enable_network_adapter(self, name, enabled):
         raise NotImplementedError()
 
+    def enable_disabled_network_adapters(self):
+        raise NotImplementedError()
+
     def set_static_network_config(self, name, address, prefix_len_or_netmask,
                                   gateway, dnsnameservers):
         raise NotImplementedError()
