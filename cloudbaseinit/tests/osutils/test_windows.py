@@ -38,8 +38,9 @@ class TestWindowsUtils(testutils.CloudbaseInitTestBase):
     '''Tests for the windows utils class.'''
 
     _CONFIG_NAME = 'FakeConfig'
-    _DESTINATION = '192.168.192.168'
+    _DESTINATION = '192.168.192.168/32'
     _GATEWAY = '10.7.1.1'
+    _GATEWAY_PUBLIC = '1.0.0.1'
     _NETMASK = '255.255.255.0'
     _PASSWORD = 'Passw0rd'
     _SECTION = 'fake_section'
@@ -1291,74 +1292,124 @@ class TestWindowsUtils(testutils.CloudbaseInitTestBase):
         mock_stop_service.assert_called_with(self._winutils._service_name)
         mock_sleep.assert_called_with(3)
 
-    @mock.patch('cloudbaseinit.osutils.windows.WindowsUtils'
-                '._get_ipv4_routing_table')
-    def _test_get_default_gateway(self, mock_get_ipv4_routing_table,
-                                  routing_table):
-        mock_get_ipv4_routing_table.return_value = [routing_table]
+    def _test_get_default_gateway(self, routing_table):
+        conn = self._wmi_mock.WMI.return_value
+        conn.MSFT_NetRoute.return_value = routing_table
+        conn.MSFT_NetRoute.call_count = 0
+
+        i = 0
+        for b, route in enumerate(routing_table):
+            if route.NextHop == self._GATEWAY_PUBLIC:
+                i = b
+
         response = self._winutils.get_default_gateway()
-        mock_get_ipv4_routing_table.assert_called_once_with()
-        if routing_table[0] == '0.0.0.0':
-            self.assertEqual((routing_table[3], routing_table[2]), response)
-        else:
+        conn.MSFT_NetRoute.assert_called_once_with(
+            AddressFamily=self.windows_utils.AF_INET)
+        if routing_table[i].DestinationPrefix == self._DESTINATION:
             self.assertEqual((None, None), response)
+        else:
+            self.assertEqual(
+                (routing_table[i].InterfaceAlias, routing_table[i].NextHop),
+                response)
 
     def test_get_default_gateway(self):
-        routing_table = ['0.0.0.0', '1.1.1.1', self._GATEWAY, '8.8.8.8']
-        self._test_get_default_gateway(routing_table=routing_table)
+        existing_route = mock.Mock()
+        existing_route.InterfaceAlias = 'eth0'
+        existing_route.DestinationPrefix = '0.0.0.0/0'
+        existing_route.NextHop = self._GATEWAY
+        routing_table = [existing_route]
+        self._test_get_default_gateway(routing_table)
+
+    def test_get_default_gateway_public(self):
+        existing_route = mock.Mock()
+        existing_route.InterfaceAlias = 'eth0'
+        existing_route.DestinationPrefix = '0.0.0.0/0'
+        existing_route.NextHop = self._GATEWAY_PUBLIC
+        existing_route2 = mock.Mock()
+        existing_route2.InterfaceAlias = 'eth1'
+        existing_route2.DestinationPrefix = '0.0.0.0/0'
+        existing_route2.NextHop = self._GATEWAY
+        routing_table = [existing_route, existing_route2]
+        self._test_get_default_gateway(routing_table)
+        routing_table = [existing_route2, existing_route]
+        self._test_get_default_gateway(routing_table)
 
     def test_get_default_gateway_error(self):
-        routing_table = ['1.1.1.1', '1.1.1.1', self._GATEWAY, '8.8.8.8']
-        self._test_get_default_gateway(routing_table=routing_table)
+        existing_route = mock.Mock()
+        existing_route.InterfaceAlias = 'eth0'
+        existing_route.DestinationPrefix = self._DESTINATION
+        existing_route.NextHop = self._GATEWAY
+        routing_table = [existing_route]
+        self._test_get_default_gateway(routing_table)
 
-    @mock.patch('cloudbaseinit.osutils.windows.WindowsUtils'
-                '._get_ipv4_routing_table')
-    def _test_check_static_route_exists(self, mock_get_ipv4_routing_table,
-                                        routing_table):
-        mock_get_ipv4_routing_table.return_value = [routing_table]
+    def _test_check_static_route_exists(self, routing_table, next_hop=False):
+        conn = self._wmi_mock.WMI.return_value
+        conn.MSFT_NetRoute.return_value = routing_table
 
-        response = self._winutils.check_static_route_exists(self._DESTINATION)
+        if next_hop:
+            response = self._winutils.check_static_route_exists(
+                self._DESTINATION, self._GATEWAY)
+        else:
+            response = self._winutils.check_static_route_exists(
+                self._DESTINATION)
 
-        mock_get_ipv4_routing_table.assert_called_once_with()
-        if routing_table[0] == self._DESTINATION:
+        conn.MSFT_NetRoute.assert_called_once_with(
+            AddressFamily=self.windows_utils.AF_INET)
+        assertTrue = (
+            (not next_hop and
+             routing_table[0].DestinationPrefix == self._DESTINATION)
+            or (next_hop and routing_table[0].NextHop == self._GATEWAY))
+        if assertTrue:
             self.assertTrue(response)
         else:
             self.assertFalse(response)
 
     def test_check_static_route_exists_true(self):
-        routing_table = [self._DESTINATION, '1.1.1.1', self._GATEWAY,
-                         '8.8.8.8']
-        self._test_check_static_route_exists(routing_table=routing_table)
+        existing_route = mock.Mock()
+        existing_route.DestinationPrefix = self._DESTINATION
+        existing_route.NextHop = self._GATEWAY
+        routing_table = [existing_route]
+        self._test_check_static_route_exists(routing_table)
 
     def test_check_static_route_exists_false(self):
-        routing_table = ['0.0.0.0', '1.1.1.1', self._GATEWAY, '8.8.8.8']
-        self._test_check_static_route_exists(routing_table=routing_table)
+        existing_route = mock.Mock()
+        existing_route.DestinationPrefix = '1.1.1.1/32'
+        existing_route.NextHop = self._GATEWAY
+        routing_table = [existing_route]
+        self._test_check_static_route_exists(routing_table)
 
-    @mock.patch('cloudbaseinit.osutils.windows.WindowsUtils.execute_process')
-    def _test_add_static_route(self, mock_execute_process, err):
-        next_hop = '10.10.10.10'
-        interface_index = 1
-        metric = 9
-        args = ['ROUTE', 'ADD', self._DESTINATION, 'MASK', self._NETMASK,
-                next_hop]
-        mock_execute_process.return_value = (None, err, None)
+    def test_check_static_route_exists_next_hop_true(self):
+        existing_route = mock.Mock()
+        existing_route.DestinationPrefix = self._DESTINATION
+        existing_route.NextHop = self._GATEWAY
+        routing_table = [existing_route]
+        self._test_check_static_route_exists(routing_table, True)
 
-        if err:
-            self.assertRaises(exception.CloudbaseInitException,
-                              self._winutils.add_static_route,
-                              self._DESTINATION, self._NETMASK, next_hop,
-                              interface_index, metric)
-
-        else:
-            self._winutils.add_static_route(self._DESTINATION, self._NETMASK,
-                                            next_hop, interface_index, metric)
-            mock_execute_process.assert_called_with(args)
+    def test_check_static_route_exists_next_hop_false(self):
+        existing_route = mock.Mock()
+        existing_route.DestinationPrefix = self._DESTINATION
+        existing_route.NextHop = '1.1.1.1'
+        routing_table = [existing_route]
+        self._test_check_static_route_exists(routing_table)
 
     def test_add_static_route(self):
-        self._test_add_static_route(err=404)
+        conn = self._wmi_mock.WMI.return_value
+        mock.sentinel.if_name = 'eth0'
+        mock.sentinel.destination_prefix = '10.20.20.0/24'
+        mock.sentinel.next_hop = '10.10.10.10'
+        mock.sentinel.metric = 9
 
-    def test_add_static_route_fail(self):
-        self._test_add_static_route(err=None)
+        self._winutils.add_static_route(mock.sentinel.if_name,
+                                        mock.sentinel.destination_prefix,
+                                        mock.sentinel.next_hop,
+                                        mock.sentinel.metric)
+
+        conn.MSFT_NetRoute.create.assert_called_once_with(
+            AddressFamily=self.windows_utils.AF_INET,
+            InterfaceAlias=mock.sentinel.if_name,
+            DestinationPrefix=mock.sentinel.destination_prefix,
+            NextHop=mock.sentinel.next_hop,
+            RouteMetric=mock.sentinel.metric)
 
     def _test_check_os_version(self, ret_val=None, fail=False):
         params = (3, 1, 2)
@@ -2305,155 +2356,6 @@ class TestWindowsUtils(testutils.CloudbaseInitTestBase):
             mock.sentinel.windows_timezone)
         mock_timezone.Timezone.return_value.set.assert_called_once_with(
             self._winutils)
-
-    def _test__heap_alloc(self, fail):
-        mock_heap = mock.Mock()
-        mock_size = mock.Mock()
-
-        if fail:
-            self._kernel32.HeapAlloc.return_value = None
-
-            with self.assertRaises(exception.CloudbaseInitException) as cm:
-                self._winutils._heap_alloc(mock_heap, mock_size)
-
-            self.assertEqual('Unable to allocate memory for the IP '
-                             'forward table',
-                             str(cm.exception))
-        else:
-            result = self._winutils._heap_alloc(mock_heap, mock_size)
-            self.assertEqual(self._kernel32.HeapAlloc.return_value, result)
-
-        self._kernel32.HeapAlloc.assert_called_once_with(
-            mock_heap, 0, self._ctypes_mock.c_size_t(mock_size.value))
-
-    def test__heap_alloc_error(self):
-        self._test__heap_alloc(fail=True)
-
-    def test__heap_alloc_no_error(self):
-        self._test__heap_alloc(fail=False)
-
-    def test__get_forward_table_no_memory(self):
-        self._winutils._heap_alloc = mock.Mock()
-        error_msg = 'Unable to allocate memory for the IP forward table'
-        exc = exception.CloudbaseInitException(error_msg)
-        self._winutils._heap_alloc.side_effect = exc
-
-        with self.assertRaises(exception.CloudbaseInitException) as cm:
-            with self._winutils._get_forward_table():
-                pass
-
-        self.assertEqual(error_msg, str(cm.exception))
-        self._winutils._heap_alloc.assert_called_once_with(
-            self._kernel32.GetProcessHeap.return_value,
-            self._ctypes_mock.wintypes.ULONG.return_value)
-
-    def test__get_forward_table_insufficient_buffer_no_memory(self):
-        self._kernel32.HeapAlloc.side_effect = (mock.sentinel.table_mem, None)
-        self._iphlpapi.GetIpForwardTable.return_value = (
-            self._winutils.ERROR_INSUFFICIENT_BUFFER)
-
-        with self.assertRaises(exception.CloudbaseInitException):
-            with self._winutils._get_forward_table():
-                pass
-
-        table = self._ctypes_mock.cast.return_value
-        self._iphlpapi.GetIpForwardTable.assert_called_once_with(
-            table,
-            self._ctypes_mock.byref.return_value, 0)
-        heap_calls = [
-            mock.call(self._kernel32.GetProcessHeap.return_value, 0, table),
-            mock.call(self._kernel32.GetProcessHeap.return_value, 0, table)
-        ]
-        self.assertEqual(heap_calls, self._kernel32.HeapFree.mock_calls)
-
-    def _test__get_forward_table(self, reallocation=False,
-                                 insufficient_buffer=False,
-                                 fail=False):
-        if fail:
-            with self.assertRaises(exception.CloudbaseInitException) as cm:
-                with self._winutils._get_forward_table():
-                    pass
-
-            msg = ('Unable to get IP forward table. Error: %s'
-                   % mock.sentinel.error)
-            self.assertEqual(msg, str(cm.exception))
-        else:
-            with self._winutils._get_forward_table() as table:
-                pass
-            pointer = self._ctypes_mock.POINTER(
-                self._iphlpapi.Win32_MIB_IPFORWARDTABLE)
-            expected_forward_table = self._ctypes_mock.cast(
-                self._kernel32.HeapAlloc.return_value, pointer)
-            self.assertEqual(expected_forward_table, table)
-
-        heap_calls = [
-            mock.call(self._kernel32.GetProcessHeap.return_value, 0,
-                      self._ctypes_mock.cast.return_value)
-        ]
-        forward_calls = [
-            mock.call(self._ctypes_mock.cast.return_value,
-                      self._ctypes_mock.byref.return_value, 0),
-        ]
-        if insufficient_buffer:
-            # We expect two calls for GetIpForwardTable
-            forward_calls.append(forward_calls[0])
-        if reallocation:
-            heap_calls.append(heap_calls[0])
-        self.assertEqual(heap_calls, self._kernel32.HeapFree.mock_calls)
-        self.assertEqual(forward_calls,
-                         self._iphlpapi.GetIpForwardTable.mock_calls)
-
-    def test__get_forward_table_sufficient_buffer(self):
-        self._iphlpapi.GetIpForwardTable.return_value = None
-        self._test__get_forward_table()
-
-    def test__get_forward_table_insufficient_buffer_reallocate(self):
-        self._kernel32.HeapAlloc.side_effect = (
-            mock.sentinel.table_mem, mock.sentinel.table_mem)
-        self._iphlpapi.GetIpForwardTable.side_effect = (
-            self._winutils.ERROR_INSUFFICIENT_BUFFER, None)
-
-        self._test__get_forward_table(reallocation=True,
-                                      insufficient_buffer=True)
-
-    def test__get_forward_table_insufficient_buffer_other_error(self):
-        self._kernel32.HeapAlloc.side_effect = (
-            mock.sentinel.table_mem, mock.sentinel.table_mem)
-        self._iphlpapi.GetIpForwardTable.side_effect = (
-            self._winutils.ERROR_INSUFFICIENT_BUFFER, mock.sentinel.error)
-
-        self._test__get_forward_table(reallocation=True,
-                                      insufficient_buffer=True,
-                                      fail=True)
-
-    @mock.patch('cloudbaseinit.osutils.windows.WindowsUtils.'
-                '_get_forward_table')
-    def test_routes(self, mock_forward_table):
-        def _same(arg):
-            return arg._mock_name.encode()
-
-        route = mock.MagicMock()
-        mock_cast_result = mock.Mock()
-        mock_cast_result.contents = [route]
-        self._ctypes_mock.cast.return_value = mock_cast_result
-        self.windows_utils.Ws2_32.inet_ntoa.side_effect = _same
-        route.dwForwardIfIndex = 'dwForwardIfIndex'
-        route.dwForwardProto = 'dwForwardProto'
-        route.dwForwardMetric1 = 'dwForwardMetric1'
-        routes = self._winutils._get_ipv4_routing_table()
-
-        mock_forward_table.assert_called_once_with()
-        enter = mock_forward_table.return_value.__enter__
-        enter.assert_called_once_with()
-        exit_ = mock_forward_table.return_value.__exit__
-        exit_.assert_called_once_with(None, None, None)
-        self.assertEqual(1, len(routes))
-        given_route = routes[0]
-        self.assertEqual('dwForwardDest', given_route[0])
-        self.assertEqual('dwForwardMask', given_route[1])
-        self.assertEqual('dwForwardNextHop', given_route[2])
-        self.assertEqual('dwForwardIfIndex', given_route[3])
-        self.assertEqual('dwForwardMetric1', given_route[4])
 
     def test_get_current_user(self):
         response = mock.Mock()

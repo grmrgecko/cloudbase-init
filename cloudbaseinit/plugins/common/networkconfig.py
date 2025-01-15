@@ -262,12 +262,16 @@ class NetworkConfigPlugin(plugin_base.BasePlugin):
         for net in network_details.networks:
             ip_address, prefix_len = net.address_cidr.split("/")
 
+            # Make a copy of the route list to allow us to remove the gateway.
+            # routes = net.routes.copy()
+
+            # Find the first gateway in the route list, and remove it.
             gateway = None
-            default_gw_route = [
-                r for r in net.routes if
-                netaddr.IPNetwork(r.network_cidr).prefixlen == 0]
-            if default_gw_route:
-                gateway = default_gw_route[0].gateway
+            # for i, r in enumerate(routes):
+            #     if netaddr.IPNetwork(r.network_cidr).prefixlen == 0:
+            #         gateway = r.gateway
+            #         routes.remove(r)
+            #         break
 
             nameservers = net.dns_nameservers
             if not nameservers:
@@ -285,6 +289,11 @@ class NetworkConfigPlugin(plugin_base.BasePlugin):
             reboot = osutils.set_static_network_config(
                 net.link, ip_address, prefix_len, gateway, nameservers)
             reboot_required = reboot or reboot_required
+
+            # Add any routes on the interface.
+            for route in net.routes:
+                osutils.add_static_route(net.link, route.network_cidr,
+                                         route.gateway, route.metric)
 
         return reboot_required
 

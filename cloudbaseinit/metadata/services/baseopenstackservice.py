@@ -201,7 +201,8 @@ class BaseOpenStackService(base.BaseMetadataService):
 
                 route = network_model.Route(
                     network_cidr=network_cidr,
-                    gateway=gateway
+                    gateway=gateway,
+                    metric=256
                 )
                 routes.append(route)
 

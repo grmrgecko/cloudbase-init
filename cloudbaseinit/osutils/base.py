@@ -136,11 +136,10 @@ class BaseOSUtils(object):
     def get_default_gateway(self):
         raise NotImplementedError()
 
-    def check_static_route_exists(self, destination):
+    def check_static_route_exists(self, destination_prefix, next_hop=None):
         raise NotImplementedError()
 
-    def add_static_route(self, destination, mask, next_hop, interface_index,
-                         metric):
+    def add_static_route(self, if_name, destination_prefix, next_hop, metric):
         raise NotImplementedError()
 
     def get_os_version(self):

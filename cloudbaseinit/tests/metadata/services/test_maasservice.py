@@ -367,7 +367,8 @@ class MaaSHttpServiceTest(unittest.TestCase):
             n.link == mock.sentinel.bond_id1 and
             n.routes == [network_model.Route(
                 network_cidr=u'0.0.0.0/0',
-                gateway=mock.sentinel.bond_subnet_gateway1
+                gateway=mock.sentinel.bond_subnet_gateway1,
+                metric=256
             )]]
         self.assertEqual(1, len(network_bond1))
 
@@ -386,7 +387,8 @@ class MaaSHttpServiceTest(unittest.TestCase):
             n.link == mock.sentinel.vlan_link_id1 and
             n.routes == [network_model.Route(
                 network_cidr=u'::/0',
-                gateway=mock.sentinel.vlan_subnet_gateway1
+                gateway=mock.sentinel.vlan_subnet_gateway1,
+                metric=256
             )]]
         self.assertEqual(1, len(network_vlan1))
 

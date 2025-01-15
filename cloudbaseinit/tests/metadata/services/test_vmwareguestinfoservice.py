@@ -76,7 +76,8 @@ EXPECTED_NETWORK_NETWORK = network_model.Network(
     dns_nameservers=["10.20.145.1", "10.20.145.2"],
     routes=[network_model.Route(
         network_cidr="0.0.0.0/0",
-        gateway="172.26.0.33")]
+        gateway="172.26.0.33",
+        metric=256)]
 )
 EXPECTED_NETWORK_NAME_SERVER = network_model.NameServerService(
     addresses=['10.20.145.1', '10.20.145.2'],

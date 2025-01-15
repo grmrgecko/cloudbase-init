@@ -270,7 +270,8 @@ class TestNetworkConfigV1Parser(unittest.TestCase):
             routes=[
                 network_model.Route(
                     network_cidr='0.0.0.0/0',
-                    gateway="192.168.1.1")
+                    gateway="192.168.1.1",
+                    metric=256)
             ]
         )
 
@@ -398,7 +399,8 @@ class TestNetworkConfigV2Parser(unittest.TestCase):
             routes=[
                 network_model.Route(
                     network_cidr='0.0.0.0/0',
-                    gateway="192.168.1.1")
+                    gateway="192.168.1.1",
+                    metric=256)
             ]
         )
         expected_network_if1 = network_model.Network(
@@ -408,7 +410,8 @@ class TestNetworkConfigV2Parser(unittest.TestCase):
             routes=[
                 network_model.Route(
                     network_cidr='0.0.0.0/0',
-                    gateway="192.168.1.1")
+                    gateway="192.168.1.1",
+                    metric=256)
             ]
         )
 
@@ -465,6 +468,7 @@ class NetworkUtilsTest(unittest.TestCase):
             network_model.Route(
                 network_cidr=u"0.0.0.0/0",
                 gateway="192.168.1.1",
+                metric=256
             ),
         ],
         dns_nameservers=[]
@@ -476,6 +480,7 @@ class NetworkUtilsTest(unittest.TestCase):
             network_model.Route(
                 network_cidr=u"2.3.4.1/24",
                 gateway="2.3.4.1",
+                metric=256
             ),
         ],
         dns_nameservers=[]
@@ -487,6 +492,7 @@ class NetworkUtilsTest(unittest.TestCase):
             network_model.Route(
                 network_cidr=u"0.0.0.0/0",
                 gateway="2.3.4.1",
+                metric=256
             ),
         ],
         dns_nameservers=[]
@@ -498,6 +504,7 @@ class NetworkUtilsTest(unittest.TestCase):
             network_model.Route(
                 network_cidr=u"172.10.1.1/24",
                 gateway="172.10.1.1",
+                metric=256
             ),
         ],
         dns_nameservers=[]
@@ -509,6 +516,7 @@ class NetworkUtilsTest(unittest.TestCase):
             network_model.Route(
                 network_cidr=u"127.0.0.4/24",
                 gateway="127.0.0.2",
+                metric=256
             ),
         ],
         dns_nameservers=[]
@@ -520,6 +528,7 @@ class NetworkUtilsTest(unittest.TestCase):
         routes=[network_model.Route(
             network_cidr=u"::/0",
             gateway="::1",
+            metric=256
         )],
         dns_nameservers=[]
     )
@@ -542,23 +551,20 @@ class NetworkUtilsTest(unittest.TestCase):
     def _test_check_metadata_ip_route(self, mock_urlparse, mock_get_os_utils,
                                       side_effect):
         mock_utils = mock.MagicMock()
-        mock_split = mock.MagicMock()
         mock_get_os_utils.return_value = mock_utils
         mock_utils.check_os_version.return_value = True
-        mock_urlparse().netloc.split.return_value = mock_split
-        mock_split[0].startswith.return_value = True
+        mock_urlparse().netloc.split.return_value = ['169.254.128.254']
         mock_utils.check_static_route_exists.return_value = False
-        mock_utils.get_default_gateway.return_value = (1, '0.0.0.0')
+        mock_utils.get_default_gateway.return_value = ('eth1', '0.0.0.0')
         mock_utils.add_static_route.side_effect = [side_effect]
         network.check_metadata_ip_route('196.254.196.254')
         mock_utils.check_os_version.assert_called_once_with(6, 0)
         mock_urlparse.assert_called_with('196.254.196.254')
-        mock_split[0].startswith.assert_called_once_with("169.254.")
         mock_utils.check_static_route_exists.assert_called_once_with(
-            mock_split[0])
+            '169.254.128.254/32')
         mock_utils.get_default_gateway.assert_called_once_with()
         mock_utils.add_static_route.assert_called_once_with(
-            mock_split[0], "255.255.255.255", '0.0.0.0', 1, 10)
+            'eth1', '169.254.128.254/32', '0.0.0.0', 10)
 
     def test_test_check_metadata_ip_route(self):
         self._test_check_metadata_ip_route(side_effect=None)
@@ -815,6 +821,7 @@ class NetworkUtilsTest(unittest.TestCase):
             routes=[network_model.Route(
                 network_cidr=u"0.0.0.0/0",
                 gateway=fake_json_response.GATEWAY0,
+                metric=256
             )],
             dns_nameservers=[dns_service0],
         )
@@ -825,6 +832,7 @@ class NetworkUtilsTest(unittest.TestCase):
             routes=[network_model.Route(
                 network_cidr=u"::/0",
                 gateway=fake_json_response.GATEWAY60,
+                metric=256
             )],
             dns_nameservers=None,
         )
@@ -835,6 +843,7 @@ class NetworkUtilsTest(unittest.TestCase):
             routes=[network_model.Route(
                 network_cidr=u"0.0.0.0/0",
                 gateway=fake_json_response.GATEWAY1,
+                metric=256
             )],
             dns_nameservers=None,
         )
@@ -845,6 +854,7 @@ class NetworkUtilsTest(unittest.TestCase):
             routes=[network_model.Route(
                 network_cidr=u"::/0",
                 gateway=fake_json_response.GATEWAY2,
+                metric=256
             )],
             dns_nameservers=None,
         )

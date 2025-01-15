@@ -79,20 +79,19 @@ def check_metadata_ip_route(metadata_url):
         # 169.254.x.x addresses are not getting routed starting from
         # Windows Vista / 2008
         metadata_netloc = parse.urlparse(metadata_url).netloc
-        metadata_host = metadata_netloc.split(':')[0]
+        metadata_host = metadata_netloc.split(':')[0] + '/32'
 
         if metadata_host.startswith("169.254."):
             if (not osutils.check_static_route_exists(metadata_host) and
                     not check_url(metadata_url)):
-                (interface_index, gateway) = osutils.get_default_gateway()
+                (interface_name, gateway) = osutils.get_default_gateway()
                 if gateway:
                     try:
                         LOG.debug('Setting gateway for host: %s',
                                   metadata_host)
-                        osutils.add_static_route(metadata_host,
-                                                 "255.255.255.255",
+                        osutils.add_static_route(interface_name,
+                                                 metadata_host,
                                                  gateway,
-                                                 interface_index,
                                                  10)
                     except Exception as ex:
                         # Ignore it
@@ -286,15 +285,20 @@ class NetworkConfigV1Parser(object):
 
             routes = []
             for route_data in subnet.get("routes", []):
-                route_netmask = route_data.get("netmask")
                 route_network = route_data.get("network")
-                route_network_cidr = ip_netmask_to_cidr(
-                    route_network, route_netmask)
+                route_netmask = route_data.get("netmask")
+                if route_netmask:
+                    route_network = ip_netmask_to_cidr(
+                        route_network, route_netmask)
 
                 route_gateway = route_data.get("gateway")
+                route_metric = route_data.get("metric")
+                if not route_metric:
+                    route_metric = 256
                 route = network_model.Route(
-                    network_cidr=route_network_cidr,
-                    gateway=route_gateway
+                    network_cidr=route_network,
+                    gateway=route_gateway,
+                    metric=route_metric
                 )
                 routes.append(route)
 
@@ -315,7 +319,8 @@ class NetworkConfigV1Parser(object):
                 routes.append(
                     network_model.Route(
                         network_cidr=gateway_net_cidr,
-                        gateway=gateway
+                        gateway=gateway,
+                        metric=256
                     )
                 )
 
@@ -551,11 +556,13 @@ class NetworkConfigV2Parser(object):
         if gateway6 and netaddr.valid_ipv6(gateway6):
             default_route = network_model.Route(
                 network_cidr=DEFAULT_GATEWAY_CIDR_IPV6,
-                gateway=gateway6)
+                gateway=gateway6,
+                metric=256)
         elif gateway4 and netaddr.valid_ipv4(gateway4):
             default_route = network_model.Route(
                 network_cidr=DEFAULT_GATEWAY_CIDR_IPV4,
-                gateway=gateway4)
+                gateway=gateway4,
+                metric=256)
         if default_route:
             routes.append(default_route)
 
@@ -569,9 +576,13 @@ class NetworkConfigV2Parser(object):
                     network_cidr = DEFAULT_GATEWAY_CIDR_IPV6
                 else:
                     network_cidr = DEFAULT_GATEWAY_CIDR_IPV4
+            metric = route_config.get("metric")
+            if not metric:
+                metric = 256
             route = network_model.Route(
                 network_cidr=network_cidr,
-                gateway=gateway)
+                gateway=gateway,
+                metric=metric)
             routes.append(route)
 
         nameservers = item.get("nameservers", {})
@@ -1042,17 +1053,20 @@ class NetworkConfigParser(object):
             if nic.gateway6:
                 default_route_v6 = network_model.Route(
                     network_cidr=DEFAULT_GATEWAY_CIDR_IPV6,
-                    gateway=nic.gateway6)
+                    gateway=nic.gateway6,
+                    metric=256)
 
             if nic.gateway:
                 if netaddr.valid_ipv6(nic.gateway):
                     default_route_v6 = network_model.Route(
                         network_cidr=DEFAULT_GATEWAY_CIDR_IPV6,
-                        gateway=nic.gateway)
+                        gateway=nic.gateway,
+                        metric=256)
                 else:
                     default_route_v4 = network_model.Route(
                         network_cidr=DEFAULT_GATEWAY_CIDR_IPV4,
-                        gateway=nic.gateway)
+                        gateway=nic.gateway,
+                        metric=256)
 
             routes_v6 = [default_route_v6] if default_route_v6 else []
             routes_v4 = [default_route_v4] if default_route_v4 else []

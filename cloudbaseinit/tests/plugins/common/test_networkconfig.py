@@ -344,11 +344,13 @@ class TestNetworkConfigPlugin(unittest.TestCase):
         networks = []
         route1 = network_model.Route(
             network_cidr=mock.sentinel.network_cidr1,
-            gateway=mock.sentinel.gateway1)
+            gateway=mock.sentinel.gateway1,
+            metric=256)
 
         route2 = network_model.Route(
             network_cidr=mock.sentinel.network_cidr2,
-            gateway=mock.sentinel.gateway2)
+            gateway=mock.sentinel.gateway2,
+            metric=256)
 
         network1 = network_model.Network(
             link=mock.sentinel.link_id1,
