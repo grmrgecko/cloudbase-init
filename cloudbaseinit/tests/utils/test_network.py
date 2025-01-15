@@ -270,7 +270,8 @@ class TestNetworkConfigV1Parser(unittest.TestCase):
             routes=[
                 network_model.Route(
                     network_cidr='0.0.0.0/0',
-                    gateway="192.168.1.1")
+                    gateway="192.168.1.1",
+                    metric=256)
             ]
         )
 
@@ -398,7 +399,8 @@ class TestNetworkConfigV2Parser(unittest.TestCase):
             routes=[
                 network_model.Route(
                     network_cidr='0.0.0.0/0',
-                    gateway="192.168.1.1")
+                    gateway="192.168.1.1",
+                    metric=256)
             ]
         )
         expected_network_if1 = network_model.Network(
@@ -408,7 +410,8 @@ class TestNetworkConfigV2Parser(unittest.TestCase):
             routes=[
                 network_model.Route(
                     network_cidr='0.0.0.0/0',
-                    gateway="192.168.1.1")
+                    gateway="192.168.1.1",
+                    metric=256)
             ]
         )
 
@@ -465,6 +468,7 @@ class NetworkUtilsTest(unittest.TestCase):
             network_model.Route(
                 network_cidr=u"0.0.0.0/0",
                 gateway="192.168.1.1",
+                metric=256
             ),
         ],
         dns_nameservers=[]
@@ -476,6 +480,7 @@ class NetworkUtilsTest(unittest.TestCase):
             network_model.Route(
                 network_cidr=u"2.3.4.1/24",
                 gateway="2.3.4.1",
+                metric=256
             ),
         ],
         dns_nameservers=[]
@@ -487,6 +492,7 @@ class NetworkUtilsTest(unittest.TestCase):
             network_model.Route(
                 network_cidr=u"0.0.0.0/0",
                 gateway="2.3.4.1",
+                metric=256
             ),
         ],
         dns_nameservers=[]
@@ -498,6 +504,7 @@ class NetworkUtilsTest(unittest.TestCase):
             network_model.Route(
                 network_cidr=u"172.10.1.1/24",
                 gateway="172.10.1.1",
+                metric=256
             ),
         ],
         dns_nameservers=[]
@@ -509,6 +516,7 @@ class NetworkUtilsTest(unittest.TestCase):
             network_model.Route(
                 network_cidr=u"127.0.0.4/24",
                 gateway="127.0.0.2",
+                metric=256
             ),
         ],
         dns_nameservers=[]
@@ -520,6 +528,7 @@ class NetworkUtilsTest(unittest.TestCase):
         routes=[network_model.Route(
             network_cidr=u"::/0",
             gateway="::1",
+            metric=256
         )],
         dns_nameservers=[]
     )
@@ -815,6 +824,7 @@ class NetworkUtilsTest(unittest.TestCase):
             routes=[network_model.Route(
                 network_cidr=u"0.0.0.0/0",
                 gateway=fake_json_response.GATEWAY0,
+                metric=256
             )],
             dns_nameservers=[dns_service0],
         )
@@ -825,6 +835,7 @@ class NetworkUtilsTest(unittest.TestCase):
             routes=[network_model.Route(
                 network_cidr=u"::/0",
                 gateway=fake_json_response.GATEWAY60,
+                metric=256
             )],
             dns_nameservers=None,
         )
@@ -835,6 +846,7 @@ class NetworkUtilsTest(unittest.TestCase):
             routes=[network_model.Route(
                 network_cidr=u"0.0.0.0/0",
                 gateway=fake_json_response.GATEWAY1,
+                metric=256
             )],
             dns_nameservers=None,
         )
@@ -845,6 +857,7 @@ class NetworkUtilsTest(unittest.TestCase):
             routes=[network_model.Route(
                 network_cidr=u"::/0",
                 gateway=fake_json_response.GATEWAY2,
+                metric=256
             )],
             dns_nameservers=None,
         )

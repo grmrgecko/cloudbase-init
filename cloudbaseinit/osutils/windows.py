@@ -1311,88 +1311,51 @@ class WindowsUtils(base.BaseOSUtils):
         self.stop_service(self._service_name)
 
     def get_default_gateway(self):
-        default_routes = [r for r in self._get_ipv4_routing_table()
-                          if r[0] == '0.0.0.0']
-        if default_routes:
-            return default_routes[0][3], default_routes[0][2]
+        conn = wmi.WMI(moniker='//./root/standardcimv2')
+        existing_routes = conn.MSFT_NetRoute(AddressFamily=AF_INET)
+        public_route = None
+        routes = []
+
+        for route in existing_routes:
+            if route.DestinationPrefix == '0.0.0.0/0':
+                if netaddr.IPAddress(route.NextHop).is_global():
+                    public_route = route
+                routes.append(route)
+
+        if public_route:
+            return public_route.InterfaceAlias, public_route.NextHop
+        if len(routes) != 0:
+            return routes[0].InterfaceAlias, routes[0].NextHop
+
+        return None, None
+
+    def check_static_route_exists(self, destination_prefix, next_hop):
+        if netaddr.valid_ipv6(next_hop):
+            family = AF_INET6
         else:
-            return None, None
+            family = AF_INET
 
-    @staticmethod
-    def _heap_alloc(heap, size):
-        table_mem = kernel32.HeapAlloc(heap, 0, ctypes.c_size_t(size.value))
-        if not table_mem:
-            raise exception.CloudbaseInitException(
-                'Unable to allocate memory for the IP forward table')
-        return table_mem
+        conn = wmi.WMI(moniker='//./root/standardcimv2')
+        existing_routes = conn.MSFT_NetRoute(AddressFamily=family)
 
-    @contextlib.contextmanager
-    def _get_forward_table(self):
-        heap = kernel32.GetProcessHeap()
-        forward_table_size = ctypes.sizeof(Win32_MIB_IPFORWARDTABLE)
-        size = wintypes.ULONG(forward_table_size)
-        table_mem = self._heap_alloc(heap, size)
+        for route in existing_routes:
+            if (route.DestinationPrefix == destination_prefix
+                    and (not next_hop or route.NextHop == next_hop)):
+                return True
 
-        p_forward_table = ctypes.cast(
-            table_mem, ctypes.POINTER(Win32_MIB_IPFORWARDTABLE))
+        return False
 
-        try:
-            err = iphlpapi.GetIpForwardTable(p_forward_table,
-                                             ctypes.byref(size), 0)
-            if err == self.ERROR_INSUFFICIENT_BUFFER:
-                kernel32.HeapFree(heap, 0, p_forward_table)
-                table_mem = self._heap_alloc(heap, size)
-                p_forward_table = ctypes.cast(
-                    table_mem,
-                    ctypes.POINTER(Win32_MIB_IPFORWARDTABLE))
-                err = iphlpapi.GetIpForwardTable(p_forward_table,
-                                                 ctypes.byref(size), 0)
+    def add_static_route(self, if_name, destination_prefix, next_hop, metric):
+        if netaddr.valid_ipv6(next_hop):
+            family = AF_INET6
+        else:
+            family = AF_INET
 
-            if err and err != kernel32.ERROR_NO_DATA:
-                raise exception.CloudbaseInitException(
-                    'Unable to get IP forward table. Error: %s' % err)
-
-            yield p_forward_table
-        finally:
-            kernel32.HeapFree(heap, 0, p_forward_table)
-
-    def _get_ipv4_routing_table(self):
-        routing_table = []
-        with self._get_forward_table() as p_forward_table:
-            forward_table = p_forward_table.contents
-            table = ctypes.cast(
-                ctypes.addressof(forward_table.table),
-                ctypes.POINTER(Win32_MIB_IPFORWARDROW *
-                               forward_table.dwNumEntries)).contents
-
-            for row in table:
-                destination = Ws2_32.inet_ntoa(
-                    row.dwForwardDest).decode()
-                netmask = Ws2_32.inet_ntoa(
-                    row.dwForwardMask).decode()
-                gateway = Ws2_32.inet_ntoa(
-                    row.dwForwardNextHop).decode()
-                routing_table.append((
-                    destination,
-                    netmask,
-                    gateway,
-                    row.dwForwardIfIndex,
-                    row.dwForwardMetric1))
-
-        return routing_table
-
-    def check_static_route_exists(self, destination):
-        return len([r for r in self._get_ipv4_routing_table()
-                    if r[0] == destination]) > 0
-
-    def add_static_route(self, destination, mask, next_hop, interface_index,
-                         metric):
-        args = ['ROUTE', 'ADD', destination, 'MASK', mask, next_hop]
-        (out, err, ret_val) = self.execute_process(args)
-        # Cannot use the return value to determine the outcome
-        if ret_val or err:
-            raise exception.CloudbaseInitException(
-                'Unable to add route: %s' % err)
+        conn = wmi.WMI(moniker='//./root/standardcimv2')
+        conn.MSFT_NetRoute.create(
+            AddressFamily=family, InterfaceAlias=if_name,
+            DestinationPrefix=destination_prefix, NextHop=next_hop,
+            RouteMetric=metric)
 
     def get_os_version(self):
         vi = Win32_OSVERSIONINFOEX_W()
