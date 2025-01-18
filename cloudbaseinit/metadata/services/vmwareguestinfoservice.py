@@ -25,9 +25,8 @@ from oslo_log import log as oslo_logging
 from cloudbaseinit import conf as cloudbaseinit_conf
 from cloudbaseinit import exception
 from cloudbaseinit.metadata.services import base
-from cloudbaseinit.metadata.services import nocloudservice
 from cloudbaseinit.osutils import factory as osutils_factory
-from cloudbaseinit.utils import network
+from cloudbaseinit.utils import network as network_utils
 from cloudbaseinit.utils import serialization
 
 CONF = cloudbaseinit_conf.CONF
@@ -163,7 +162,7 @@ class VMwareGuestInfoService(base.BaseMetadataService):
             LOG.info("V2 network metadata not found")
             return
 
-        return nocloudservice.NoCloudNetworkConfigParser.parse(network)
+        return network_utils.NetworkConfigParser.parse(network)
 
     def _decode(self, key, enc_type, data):
         """Returns the decoded string value of data
@@ -255,7 +254,8 @@ class VMwareGuestInfoService(base.BaseMetadataService):
         """
         ds = dict()
         network_details = self.get_network_details_v2()
-        host_info = network.get_host_info(self.get_host_name(),
-                                          network_details)
+        host_info = network_utils.get_host_info(
+            self.get_host_name(),
+            network_details)
         ds.update(host_info)
         return ds

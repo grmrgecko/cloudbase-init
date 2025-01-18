@@ -153,7 +153,8 @@ class NetworkConfigPlugin(plugin_base.BasePlugin):
                     nic.address,
                     nic.netmask,
                     nic.gateway,
-                    nic.dnsnameservers or []
+                    nic.dnsnameservers or [],
+                    True
                 )
             reboot_required = reboot or reboot_required
             # Set v6 info too if available.
@@ -163,7 +164,8 @@ class NetworkConfigPlugin(plugin_base.BasePlugin):
                     nic.address6,
                     nic.netmask6,
                     nic.gateway6,
-                    []
+                    [],
+                    True
                 )
             reboot_required = reboot or reboot_required
             configured = True
@@ -259,15 +261,18 @@ class NetworkConfigPlugin(plugin_base.BasePlugin):
         ipv4_ns, ipv6_ns = NetworkConfigPlugin._get_default_dns_nameservers(
             network_details)
 
+        # The first call should flush existing addresses and routes, however
+        # in-order to set more than one address, we need addtional calls to
+        # not. We will keep track of links+ip version that were flushed for
+        # this purpose.
+        flush_link_status = {}
+
         for net in network_details.networks:
             ip_address, prefix_len = net.address_cidr.split("/")
 
+            # Gateways are in the static route list, we let that static route
+            # handle setting the gateway to carry any metric customization.
             gateway = None
-            default_gw_route = [
-                r for r in net.routes if
-                netaddr.IPNetwork(r.network_cidr).prefixlen == 0]
-            if default_gw_route:
-                gateway = default_gw_route[0].gateway
 
             nameservers = net.dns_nameservers
             if not nameservers:
@@ -276,6 +281,16 @@ class NetworkConfigPlugin(plugin_base.BasePlugin):
                 else:
                     nameservers = ipv4_ns
 
+            # Determine if link and IP version was previously flushed. If not,
+            # we should flush the routes and addresses.
+            flush_addresses_and_routes = False
+            addrName = f"{net.link}:ipv4"
+            if ":" in ip_address:
+                addrName = f"{net.link}:ipv6"
+            if addrName not in flush_link_status:
+                flush_addresses_and_routes = True
+                flush_link_status[addrName] = True
+
             LOG.info(
                 "Setting static IP configuration on network adapter "
                 "\"%(name)s\". IP: %(ip)s, prefix length: %(prefix_len)s, "
@@ -283,8 +298,20 @@ class NetworkConfigPlugin(plugin_base.BasePlugin):
                 {"name": net.link, "ip": ip_address, "prefix_len": prefix_len,
                  "gateway": gateway, "dns": nameservers})
             reboot = osutils.set_static_network_config(
-                net.link, ip_address, prefix_len, gateway, nameservers)
+                net.link, ip_address, prefix_len, gateway, nameservers,
+                flush_addresses_and_routes)
             reboot_required = reboot or reboot_required
+
+            # Add any routes on the interface.
+            for route in net.routes:
+                LOG.info(
+                    "Setting static route configuration on network adapter "
+                    "'%(name)s, cidr: %(cidr)s, gateway: %(gateway)s, "
+                    "metric: %(metric)d'",
+                    {"name": net.link, "cidr": route.network_cidr,
+                     "gateway": route.gateway, "metric": route.metric})
+                osutils.add_static_route(net.link, route.network_cidr,
+                                         route.gateway, route.metric)
 
         return reboot_required
 

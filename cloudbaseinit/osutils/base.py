@@ -103,8 +103,12 @@ class BaseOSUtils(object):
     def enable_network_adapter(self, name, enabled):
         raise NotImplementedError()
 
+    def enable_disabled_network_adapters(self):
+        raise NotImplementedError()
+
     def set_static_network_config(self, name, address, prefix_len_or_netmask,
-                                  gateway, dnsnameservers):
+                                  gateway, dnsnameservers,
+                                  flush_addresses_and_routes):
         raise NotImplementedError()
 
     def create_network_team(self, team_name, mode, load_balancing_algorithm,
@@ -133,11 +137,10 @@ class BaseOSUtils(object):
     def get_default_gateway(self):
         raise NotImplementedError()
 
-    def check_static_route_exists(self, destination):
+    def check_static_route_exists(self, destination_prefix, next_hop=None):
         raise NotImplementedError()
 
-    def add_static_route(self, destination, mask, next_hop, interface_index,
-                         metric):
+    def add_static_route(self, if_name, destination_prefix, next_hop, metric):
         raise NotImplementedError()
 
     def get_os_version(self):

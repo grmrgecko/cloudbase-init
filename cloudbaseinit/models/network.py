@@ -128,7 +128,8 @@ Route = collections.namedtuple(
     "Route",
     [
         "network_cidr",
-        "gateway"
+        "gateway",
+        "metric"
     ]
 )
 

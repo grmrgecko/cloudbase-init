@@ -491,10 +491,12 @@ class TestBaseOpenStackService(unittest.TestCase):
         self.assertEqual([
             network_model.Route(
                 network_cidr=network_cidr1,
-                gateway=mock.sentinel.route_gateway1),
+                gateway=mock.sentinel.route_gateway1,
+                metric=256),
             network_model.Route(
                 network_cidr=network_cidr2,
-                gateway=mock.sentinel.route_gateway2)],
+                gateway=mock.sentinel.route_gateway2,
+                metric=256)],
             network[0].routes)
 
         network_ipv6 = [

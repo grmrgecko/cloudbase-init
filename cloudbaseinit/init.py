@@ -118,7 +118,7 @@ class InitManager(object):
                 if not success:
                     stage_success = False
                 if reboot_required and CONF.allow_reboot:
-                        break
+                    break
 
         return stage_success, reboot_required
 

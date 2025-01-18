@@ -987,8 +987,33 @@ class WindowsUtils(base.BaseOSUtils):
         else:
             adapter.Disable()
 
+    def enable_disabled_network_adapters(self):
+        """Find disabled interfaces, and enable them.
+
+        If the interfaces are disabled, WMI won't know their MAC address,
+        which in term prevents get_network_adapters from finding the adapter.
+        This function exists to allow network plugins to enable the adapters,
+        which then allows the plugin to find the MAC address and utilize the
+        adapter as needed.
+        """
+
+        # Load the cimv2 interface.
+        conn = wmi.WMI(moniker='//./root/cimv2')
+        # Get disabled adapters.
+        wql = 'SELECT * FROM Win32_NetworkAdapter WHERE NetEnabled = False'
+        if self.check_os_version(6, 0):
+            wql += ' AND PhysicalAdapter = True'
+        q = conn.query(wql)
+
+        # Loop results, and enable.
+        for r in q:
+            r.Enable()
+
     @staticmethod
-    def _set_static_network_config(name, address, prefix_len, gateway):
+    @retry_decorator.retry_decorator(
+        max_retry_count=5, exceptions=wmi.x_wmi)
+    def _set_static_network_config(name, address, prefix_len, gateway,
+                                   flush_addresses_and_routes):
         if netaddr.valid_ipv6(address):
             family = AF_INET6
         else:
@@ -999,31 +1024,37 @@ class WindowsUtils(base.BaseOSUtils):
         # Dhcp Enabled"
         WindowsUtils._fix_network_adapter_dhcp(name, False, family)
 
+        # Connect to the WMI interface.
         conn = wmi.WMI(moniker='//./root/standardcimv2')
-        existing_addresses = conn.MSFT_NetIPAddress(
-            AddressFamily=family, InterfaceAlias=name)
-        for existing_address in existing_addresses:
-            LOG.debug(
-                "Removing existing IP address \"%(ip)s\" "
-                "from adapter \"%(name)s\"",
-                {"ip": existing_address.IPAddress, "name": name})
-            existing_address.Delete_()
 
-        existing_routes = conn.MSFT_NetRoute(
-            AddressFamily=family, InterfaceAlias=name)
-        for existing_route in existing_routes:
-            LOG.debug(
-                "Removing existing route \"%(route)s\" "
-                "from adapter \"%(name)s\"",
-                {"route": existing_route.DestinationPrefix, "name": name})
-            existing_route.Delete_()
+        # Only flush existing addresses and routes if requested,
+        # this allows for multiple addresses to be set.
+        if flush_addresses_and_routes:
+            existing_addresses = conn.MSFT_NetIPAddress(
+                AddressFamily=family, InterfaceAlias=name)
+            for existing_address in existing_addresses:
+                LOG.debug(
+                    "Removing existing IP address \"%(ip)s\" "
+                    "from adapter \"%(name)s\"",
+                    {"ip": existing_address.IPAddress, "name": name})
+                existing_address.Delete_()
+
+            existing_routes = conn.MSFT_NetRoute(
+                AddressFamily=family, InterfaceAlias=name)
+            for existing_route in existing_routes:
+                LOG.debug(
+                    "Removing existing route \"%(route)s\" "
+                    "from adapter \"%(name)s\"",
+                    {"route": existing_route.DestinationPrefix, "name": name})
+                existing_route.Delete_()
 
         conn.MSFT_NetIPAddress.create(
             AddressFamily=family, InterfaceAlias=name, IPAddress=address,
             PrefixLength=prefix_len, DefaultGateway=gateway)
 
     def set_static_network_config(self, name, address, prefix_len_or_netmask,
-                                  gateway, dnsnameservers):
+                                  gateway, dnsnameservers,
+                                  flush_addresses_and_routes):
         ip_network = netaddr.IPNetwork(
             u"%s/%s" % (address, prefix_len_or_netmask))
         prefix_len = ip_network.prefixlen
@@ -1031,7 +1062,7 @@ class WindowsUtils(base.BaseOSUtils):
 
         if self.check_os_version(6, 2):
             self._set_static_network_config(
-                name, address, prefix_len, gateway)
+                name, address, prefix_len, gateway, flush_addresses_and_routes)
             if len(dnsnameservers):
                 self._set_interface_dns(name, dnsnameservers)
         else:
@@ -1289,88 +1320,83 @@ class WindowsUtils(base.BaseOSUtils):
         self.stop_service(self._service_name)
 
     def get_default_gateway(self):
-        default_routes = [r for r in self._get_ipv4_routing_table()
-                          if r[0] == '0.0.0.0']
-        if default_routes:
-            return default_routes[0][3], default_routes[0][2]
+        """Gets the IPv4 default gateway.
+
+        If there are multiple default gateways, it will return the first
+        globally routable default gateway.
+        """
+
+        # Get the existing routes for IPv4.
+        conn = wmi.WMI(moniker='//./root/standardcimv2')
+        existing_routes = conn.MSFT_NetRoute(AddressFamily=AF_INET)
+        public_route = None
+        routes = []
+
+        # Find all routes that are default gateways.
+        for route in existing_routes:
+            if route.DestinationPrefix == '0.0.0.0/0':
+                # If gateway is globally routable, we will return it.
+                if netaddr.IPAddress(route.NextHop).is_global():
+                    public_route = route
+                    break
+
+                # Other gateways, we add to list.
+                routes.append(route)
+
+        # If an public route is found, return it.
+        if public_route:
+            return public_route.InterfaceAlias, public_route.NextHop
+
+        # If routes were found, return the first.
+        if len(routes) != 0:
+            return routes[0].InterfaceAlias, routes[0].NextHop
+
+        # No routes were found.
+        return None, None
+
+    def check_static_route_exists(self, destination_prefix, next_hop=None):
+        """Check if a static route exists that matches provided arguments.
+
+        Destination is required.
+        Next hop is the gateway, and can be optionally matched.
+        """
+
+        # If the destination is IPv6, set the family accordingly.
+        if ':' in destination_prefix:
+            family = AF_INET6
         else:
-            return None, None
+            family = AF_INET
 
-    @staticmethod
-    def _heap_alloc(heap, size):
-        table_mem = kernel32.HeapAlloc(heap, 0, ctypes.c_size_t(size.value))
-        if not table_mem:
-            raise exception.CloudbaseInitException(
-                'Unable to allocate memory for the IP forward table')
-        return table_mem
+        # Find existing routes for the determined family.
+        conn = wmi.WMI(moniker='//./root/standardcimv2')
+        existing_routes = conn.MSFT_NetRoute(AddressFamily=family)
 
-    @contextlib.contextmanager
-    def _get_forward_table(self):
-        heap = kernel32.GetProcessHeap()
-        forward_table_size = ctypes.sizeof(Win32_MIB_IPFORWARDTABLE)
-        size = wintypes.ULONG(forward_table_size)
-        table_mem = self._heap_alloc(heap, size)
+        # Check each route, and verify provided arguments match.
+        for route in existing_routes:
+            # If the destination and next hop match, with the gateway being
+            # an optional match, we return true as a match was found.
+            if (route.DestinationPrefix == destination_prefix
+                    and (not next_hop or route.NextHop == next_hop)):
+                return True
 
-        p_forward_table = ctypes.cast(
-            table_mem, ctypes.POINTER(Win32_MIB_IPFORWARDTABLE))
+        # No match found, return false.
+        return False
 
-        try:
-            err = iphlpapi.GetIpForwardTable(p_forward_table,
-                                             ctypes.byref(size), 0)
-            if err == self.ERROR_INSUFFICIENT_BUFFER:
-                kernel32.HeapFree(heap, 0, p_forward_table)
-                table_mem = self._heap_alloc(heap, size)
-                p_forward_table = ctypes.cast(
-                    table_mem,
-                    ctypes.POINTER(Win32_MIB_IPFORWARDTABLE))
-                err = iphlpapi.GetIpForwardTable(p_forward_table,
-                                                 ctypes.byref(size), 0)
+    def add_static_route(self, if_name, destination_prefix, next_hop, metric):
+        """Add an static route to the provided interface."""
 
-            if err and err != kernel32.ERROR_NO_DATA:
-                raise exception.CloudbaseInitException(
-                    'Unable to get IP forward table. Error: %s' % err)
+        # Determine the family based on destination prefix.
+        if ':' in destination_prefix:
+            family = AF_INET6
+        else:
+            family = AF_INET
 
-            yield p_forward_table
-        finally:
-            kernel32.HeapFree(heap, 0, p_forward_table)
-
-    def _get_ipv4_routing_table(self):
-        routing_table = []
-        with self._get_forward_table() as p_forward_table:
-            forward_table = p_forward_table.contents
-            table = ctypes.cast(
-                ctypes.addressof(forward_table.table),
-                ctypes.POINTER(Win32_MIB_IPFORWARDROW *
-                               forward_table.dwNumEntries)).contents
-
-            for row in table:
-                destination = Ws2_32.inet_ntoa(
-                    row.dwForwardDest).decode()
-                netmask = Ws2_32.inet_ntoa(
-                    row.dwForwardMask).decode()
-                gateway = Ws2_32.inet_ntoa(
-                    row.dwForwardNextHop).decode()
-                routing_table.append((
-                    destination,
-                    netmask,
-                    gateway,
-                    row.dwForwardIfIndex,
-                    row.dwForwardMetric1))
-
-        return routing_table
-
-    def check_static_route_exists(self, destination):
-        return len([r for r in self._get_ipv4_routing_table()
-                    if r[0] == destination]) > 0
-
-    def add_static_route(self, destination, mask, next_hop, interface_index,
-                         metric):
-        args = ['ROUTE', 'ADD', destination, 'MASK', mask, next_hop]
-        (out, err, ret_val) = self.execute_process(args)
-        # Cannot use the return value to determine the outcome
-        if ret_val or err:
-            raise exception.CloudbaseInitException(
-                'Unable to add route: %s' % err)
+        # Add the route to windows.
+        conn = wmi.WMI(moniker='//./root/standardcimv2')
+        conn.MSFT_NetRoute.create(
+            AddressFamily=family, InterfaceAlias=if_name,
+            DestinationPrefix=destination_prefix, NextHop=next_hop,
+            RouteMetric=metric)
 
     def get_os_version(self):
         vi = Win32_OSVERSIONINFOEX_W()

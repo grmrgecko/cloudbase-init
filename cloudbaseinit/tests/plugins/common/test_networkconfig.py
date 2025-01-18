@@ -79,14 +79,16 @@ class TestNetworkConfigPlugin(unittest.TestCase):
                 nic.address,
                 nic.netmask,
                 nic.gateway,
-                nic.dnsnameservers
+                nic.dnsnameservers,
+                True
             )
             call6 = mock.call(
                 adapter[0],
                 nic.address6,
                 nic.netmask6,
                 nic.gateway6,
-                []
+                [],
+                True
             )
             if nic.address and nic.netmask:
                 calls.append(call)
@@ -344,11 +346,13 @@ class TestNetworkConfigPlugin(unittest.TestCase):
         networks = []
         route1 = network_model.Route(
             network_cidr=mock.sentinel.network_cidr1,
-            gateway=mock.sentinel.gateway1)
+            gateway=mock.sentinel.gateway1,
+            metric=256)
 
         route2 = network_model.Route(
             network_cidr=mock.sentinel.network_cidr2,
-            gateway=mock.sentinel.gateway2)
+            gateway=mock.sentinel.gateway2,
+            metric=256)
 
         network1 = network_model.Network(
             link=mock.sentinel.link_id1,
@@ -460,7 +464,12 @@ class TestNetworkConfigPlugin(unittest.TestCase):
         ip_address, prefix_len = mock.sentinel.address_cidr1.split("/")
         mock_os_utils.set_static_network_config.assert_called_once_with(
             mock.sentinel.link_id1, ip_address, prefix_len,
-            mock.sentinel.gateway1, expected_dns_list)
+            None, expected_dns_list, True)
+        mock_os_utils.add_static_route.assert_any_call(
+            mock.sentinel.link_id1, '0.0.0.0/0', mock.sentinel.gateway1, 256)
+        mock_os_utils.add_static_route.assert_any_call(
+            mock.sentinel.link_id1, mock.sentinel.network_cidr2,
+            mock.sentinel.gateway2, 256)
 
     def test_execute_network_details_v2(self):
         self._test_execute_network_details_v2()
