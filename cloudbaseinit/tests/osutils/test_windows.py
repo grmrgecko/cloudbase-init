@@ -833,6 +833,82 @@ class TestWindowsUtils(testutils.CloudbaseInitTestBase):
         self._test_set_static_network_config(ipv6=True)
 
     @mock.patch('cloudbaseinit.osutils.windows.WindowsUtils'
+                '.check_os_version')
+    @mock.patch('cloudbaseinit.osutils.windows.WindowsUtils'
+                '._fix_network_adapter_dhcp')
+    @mock.patch('time.sleep')
+    def test_set_static_network_config_wmi_retry_succeeds(
+            self, mock_sleep, mock_fix_network_adapter_dhcp,
+            mock_check_os_version):
+        mock_check_os_version.return_value = True
+        conn = self._wmi_mock.WMI.return_value
+        mock.sentinel.address = "10.10.10.10"
+        mock.sentinel.prefix_len_or_netmask = "255.255.255.0"
+
+        family = self.windows_utils.AF_INET
+
+        existing_adapter = mock.Mock()
+        existing_adapter.IPAddress = mock.sentinel.address
+        conn.MSFT_NetIPAddress.return_value = [existing_adapter]
+
+        existing_route = mock.Mock()
+        existing_route.DestinationPrefix = "0.0.0.0"
+        conn.MSFT_NetRoute.return_value = [existing_route]
+
+        dns_client = mock.Mock()
+        conn.MSFT_DnsClientServerAddress.return_value = [dns_client]
+
+        # Fail twice with WMIError, then succeed on third call.
+        mock_fix_network_adapter_dhcp.side_effect = [
+            WMIError("Inconsistent parameters"),
+            WMIError("Inconsistent parameters"),
+            None,
+        ]
+
+        self._winutils.set_static_network_config(
+            mock.sentinel.nick_name, mock.sentinel.address,
+            mock.sentinel.prefix_len_or_netmask, mock.sentinel.gateway,
+            [mock.sentinel.dns])
+
+        self.assertEqual(mock_fix_network_adapter_dhcp.call_count, 3)
+        mock_sleep.assert_called()
+
+        ip_network = netaddr.IPNetwork(
+            u"%s/%s" % (
+                mock.sentinel.address, mock.sentinel.prefix_len_or_netmask))
+        prefix_len = ip_network.prefixlen
+
+        conn.MSFT_NetIPAddress.create.assert_called_once_with(
+            AddressFamily=family, InterfaceAlias=mock.sentinel.nick_name,
+            IPAddress=mock.sentinel.address, PrefixLength=prefix_len,
+            DefaultGateway=mock.sentinel.gateway)
+
+    @mock.patch('cloudbaseinit.osutils.windows.WindowsUtils'
+                '.check_os_version')
+    @mock.patch('cloudbaseinit.osutils.windows.WindowsUtils'
+                '._fix_network_adapter_dhcp')
+    @mock.patch('time.sleep')
+    def test_set_static_network_config_wmi_retry_fails(
+            self, mock_sleep, mock_fix_network_adapter_dhcp,
+            mock_check_os_version):
+        mock_check_os_version.return_value = True
+        mock.sentinel.address = "10.10.10.10"
+        mock.sentinel.prefix_len_or_netmask = "255.255.255.0"
+
+        # Fail on every attempt (1 initial + 10 retries = 11 calls).
+        mock_fix_network_adapter_dhcp.side_effect = WMIError(
+            "Inconsistent parameters")
+
+        self.assertRaises(
+            WMIError,
+            self._winutils.set_static_network_config,
+            mock.sentinel.nick_name, mock.sentinel.address,
+            mock.sentinel.prefix_len_or_netmask, mock.sentinel.gateway,
+            [mock.sentinel.dns])
+
+        self.assertEqual(mock_fix_network_adapter_dhcp.call_count, 11)
+
+    @mock.patch('cloudbaseinit.osutils.windows.WindowsUtils'
                 '._get_network_msft_adapter')
     @mock.patch('time.sleep')
     def _test_rename_network_adapter(self,

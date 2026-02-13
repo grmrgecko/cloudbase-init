@@ -1024,7 +1024,7 @@ class WindowsUtils(base.BaseOSUtils):
 
     @staticmethod
     @retry_decorator.retry_decorator(
-        max_retry_count=5, exceptions=wmi.x_wmi)
+        max_retry_count=10, exceptions=wmi.x_wmi)
     def _set_static_network_config(name, address, prefix_len, gateway,
                                    flush_addresses_and_routes):
         if netaddr.valid_ipv6(address):
