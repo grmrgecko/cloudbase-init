@@ -420,3 +420,22 @@ class TestLocalNetworkConfigPlugin(unittest.TestCase):
             call(mock.sentinel.vlan1, False, AF_INET6),
             call(mock.sentinel.vlan2, False, AF_INET),
             call(mock.sentinel.vlan2, False, AF_INET6)])
+
+    def test_fix_interface_dhcp_toggles_disabled_protocols(self):
+        plugin = localnetworkconfig.LocalNetworkConfigPlugin()
+        plugin.osutils = mock.MagicMock()
+        adapter = mock.Mock()
+        adapter.NetEnabled = True
+        plugin.osutils._get_network_adapter.return_value = adapter
+
+        plugin._fix_interface_dhcp(
+            'Ethernet', False, False, True, False)
+
+        plugin.osutils._fix_network_adapter_dhcp.assert_has_calls([
+            call('Ethernet', False, AF_INET),
+            call('Ethernet', False, AF_INET6)])
+        plugin.osutils._set_network_adapter_protocol.assert_has_calls([
+            call('Ethernet', True, 'ms_tcpip'),
+            call('Ethernet', False, 'ms_tcpip6')])
+        adapter.Disable.assert_called_once_with()
+        adapter.Enable.assert_called_once_with()

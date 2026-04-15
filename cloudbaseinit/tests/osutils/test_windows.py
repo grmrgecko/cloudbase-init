@@ -2073,6 +2073,28 @@ class TestWindowsUtils(testutils.CloudbaseInitTestBase):
     def test_fix_network_adapter_dhcp_no_network_adapter(self):
         self._test_fix_network_adapter_dhcp(False)
 
+    def test_set_network_adapter_protocol(self):
+        conn = self._wmi_mock.WMI.return_value
+        existing_binding = mock.Mock()
+        conn.MSFT_NetAdapterBindingSettingData.return_value = [
+            existing_binding]
+
+        self._winutils._set_network_adapter_protocol(
+            'Ethernet', False, 'ms_tcpip6')
+
+        conn.MSFT_NetAdapterBindingSettingData.assert_called_once_with(
+            Name='Ethernet', ComponentID='ms_tcpip6')
+        self.assertFalse(existing_binding.Enabled)
+        existing_binding.put.assert_called_once_with()
+
+    def test_set_network_adapter_protocol_not_found(self):
+        conn = self._wmi_mock.WMI.return_value
+        conn.MSFT_NetAdapterBindingSettingData.return_value = []
+
+        with self.assertRaises(exception.ItemNotFoundException):
+            self._winutils._set_network_adapter_protocol(
+                'Ethernet', True, 'ms_tcpip')
+
     def _test_fix_network_adapter_dhcp(self, no_net_interface_found):
         mock_interface_name = "eth12"
         mock_enable_dhcp = True

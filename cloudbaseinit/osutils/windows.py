@@ -956,6 +956,19 @@ class WindowsUtils(base.BaseOSUtils):
         net_interface.put()
 
     @staticmethod
+    def _set_network_adapter_protocol(interface_name, enable, component_id):
+        conn = wmi.WMI(moniker='//./root/standardcimv2')
+        net_adapter_binding = conn.MSFT_NetAdapterBindingSettingData(
+            Name=interface_name, ComponentID=component_id)
+        if not len(net_adapter_binding):
+            raise exception.ItemNotFoundException(
+                'Network adapter binding with name "%s" and component '
+                '"%s" not found' % (interface_name, component_id))
+        net_adapter_binding = net_adapter_binding[0]
+        net_adapter_binding.Enabled = enable
+        net_adapter_binding.put()
+
+    @staticmethod
     def _set_interface_dns(interface_name, dnsnameservers):
         # Import here to avoid loading errors on Windows versions where MI is
         # not available
