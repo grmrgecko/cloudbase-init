@@ -77,8 +77,9 @@ class LocalNetworkConfigPlugin(base.BasePlugin):
         file.close()
         return network_data
 
-    def _fix_interface_dhcp(self, name, dhcpv4Enabled, dhcpv6Enabled):
-        """Internal function to fix DHCP configuration."""
+    def _fix_interface_dhcp(self, name, dhcpv4Enabled, dhcpv6Enabled,
+                            ipv4Configured, ipv6Configured):
+        """Internal function to fix DHCP and protocol configuration."""
 
         # Get the adapters current state, ignoring disabled adapters.
         adapter = self.osutils._get_network_adapter(name)
@@ -92,12 +93,24 @@ class LocalNetworkConfigPlugin(base.BasePlugin):
                 name,
                 True,
                 AF_INET)
-        else:
+            self.osutils._set_network_adapter_protocol(
+                name, True, 'ms_tcpip')
+        elif ipv4Configured:
             LOG.debug('Disabling DHCP4 on %s' % name)
             self.osutils._fix_network_adapter_dhcp(
                 name,
                 False,
                 AF_INET)
+            self.osutils._set_network_adapter_protocol(
+                name, True, 'ms_tcpip')
+        else:
+            LOG.debug('Disabling IPv4 on %s' % name)
+            self.osutils._fix_network_adapter_dhcp(
+                name,
+                False,
+                AF_INET)
+            self.osutils._set_network_adapter_protocol(
+                name, False, 'ms_tcpip')
 
         if dhcpv6Enabled:
             LOG.debug('Enabling DHCP6 on %s' % name)
@@ -105,12 +118,24 @@ class LocalNetworkConfigPlugin(base.BasePlugin):
                 name,
                 True,
                 AF_INET6)
-        else:
+            self.osutils._set_network_adapter_protocol(
+                name, True, 'ms_tcpip6')
+        elif ipv6Configured:
             LOG.debug('Disabling DHCP6 on %s' % name)
             self.osutils._fix_network_adapter_dhcp(
                 name,
                 False,
                 AF_INET6)
+            self.osutils._set_network_adapter_protocol(
+                name, True, 'ms_tcpip6')
+        else:
+            LOG.debug('Disabling IPv6 on %s' % name)
+            self.osutils._fix_network_adapter_dhcp(
+                name,
+                False,
+                AF_INET6)
+            self.osutils._set_network_adapter_protocol(
+                name, False, 'ms_tcpip6')
 
         # If we're disabling DHCP, we should toggle the interface state.
         # Otherwise, its possible that DHCP already got an address.
@@ -172,16 +197,24 @@ class LocalNetworkConfigPlugin(base.BasePlugin):
                     # Check subnets for DHCP configurations.
                     dhcpv4Enabled = False
                     dhcpv6Enabled = False
+                    ipv4Configured = False
+                    ipv6Configured = False
                     dhcp4 = config_item.get(network_utils.SUBNET_TYPE_DHCP4)
                     if dhcp4:
                         dhcpv4Enabled = True
                     dhcp6 = config_item.get(network_utils.SUBNET_TYPE_DHCP6)
                     if dhcp6:
                         dhcpv6Enabled = True
+                    for address in config_item.get('addresses', []):
+                        if ':' in address:
+                            ipv6Configured = True
+                        else:
+                            ipv4Configured = True
 
                     # Fix the interface DHCP state.
                     self._fix_interface_dhcp(
-                        name, dhcpv4Enabled, dhcpv6Enabled)
+                        name, dhcpv4Enabled, dhcpv6Enabled,
+                        ipv4Configured, ipv6Configured)
 
             # This function is done processing configurations,
             # v2 configuration has been parsed.
@@ -221,6 +254,8 @@ class LocalNetworkConfigPlugin(base.BasePlugin):
             # Check subnets for DHCP configurations.
             dhcpv4Enabled = False
             dhcpv6Enabled = False
+            ipv4Configured = False
+            ipv6Configured = False
             subnets = config_item.get("subnets", [])
             for subnet in subnets:
                 subnet_type = subnet.get("type")
@@ -230,9 +265,17 @@ class LocalNetworkConfigPlugin(base.BasePlugin):
                     dhcpv4Enabled = True
                 elif subnet_type == network_utils.SUBNET_TYPE_DHCP6:
                     dhcpv6Enabled = True
+                elif subnet_type == network_utils.SUBNET_TYPE_STATIC:
+                    address = subnet.get("address")
+                    if address and ':' in address:
+                        ipv6Configured = True
+                    elif address:
+                        ipv4Configured = True
 
             # Fix the interface DHCP state.
-            self._fix_interface_dhcp(name, dhcpv4Enabled, dhcpv6Enabled)
+            self._fix_interface_dhcp(
+                name, dhcpv4Enabled, dhcpv6Enabled,
+                ipv4Configured, ipv6Configured)
 
     def execute(self, service, shared_data):
         self.osutils = osutils_factory.get_os_utils()
